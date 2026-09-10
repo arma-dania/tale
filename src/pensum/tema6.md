@@ -38,9 +38,6 @@ Fire trin i stigende engagement og risiko:
 3. Eget salgsdatterselskab i landet
 4. Egen produktion eller fabrik i landet
 
-**[TJEK]** Nogle fremstillinger opererer med tre trin eller kalder trin 1 "ingen
-eksportaktivitet". Ret til holdets version.
-
 Kritik: modellen forklarer ikke virksomheder, der springer trin over, og den er
 udviklet før internettet gjorde markedsinformation billig.
 
@@ -69,9 +66,6 @@ af et internationaliseringsmønster.
 - **Tragtmetoden (systematisk screening)**: alle lande betragtes som mulige og sorteres
   fra gennem successive filtre — først grove makrokriterier, siden finere mikro- og
   markedsanalyser, til der er få tilbage. Grundig, men tidskrævende og datakrævende.
-
-**[TJEK]** Navnene på metoderne varierer. Nogle kalder tragtmetoden "systematisk
-udvælgelse" eller "screeningmodellen".
 
 ### Makroscreening
 
@@ -119,25 +113,33 @@ Konjunkturen vurderes ved at sammenholde nøgletal med deres ligevægtsniveauer:
 **SE (samlet efterspørgsel)** = privat forbrug (C) + investeringer (I) + offentligt
 forbrug og investeringer (G) + nettoeksport (X − M). Kurven falder med prisniveauet.
 
-**SU (samlet udbud)** stiger på kort sigt med prisniveauet, fordi højere priser gør det
-attraktivt at producere mere. På langt sigt er kurven lodret ved det potentielle BNP —
-produktionen bestemmes af arbejdsstyrke, kapital og teknologi, ikke af prisniveauet.
+**SU (samlet udbud)** tegnes i to kurver:
 
-Sådan virker politikken i diagrammet:
+- **SU-kort** er den kortsigtede kurve. Den stiger med prisniveauet, fordi lønninger og
+  andre omkostninger er trægt tilpassede, så højere priser gør det attraktivt at
+  producere mere.
+- **SU-lang** er den langsigtede kurve. Den er lodret ved det potentielle BNP, fordi
+  produktionen på langt sigt bestemmes af arbejdsstyrke, kapital og teknologi — ikke af
+  prisniveauet.
 
-- **Ekspansiv finanspolitik** (højere G eller lavere skat) flytter SE mod højre:
-  højere produktion og beskæftigelse, men også højere prisniveau.
-- **Kontraktiv finanspolitik** flytter SE mod venstre: lavere aktivitet, lavere pres
+Afstanden mellem den aktuelle produktion og SU-lang er output gap'et, og det er dér,
+konjunkturvurderingen kan aflæses i diagrammet.
+
+Sådan virker politikken:
+
+- **Ekspansiv finanspolitik** (højere G eller lavere skat) flytter SE mod højre. Langs
+  SU-kort giver det både højere produktion og højere prisniveau. Er økonomien allerede
+  ved SU-lang, ender virkningen på langt sigt alene i prisniveauet.
+- **Kontraktiv finanspolitik** flytter SE mod venstre: lavere aktivitet og mindre pres
   på priserne.
 - **Ekspansiv pengepolitik** (lavere rente) gør det billigere at låne og mindre
-  attraktivt at spare. C og I stiger, altså flytter SE mod højre. En lavere rente
-  svækker desuden typisk valutaen, hvilket løfter nettoeksporten.
+  attraktivt at spare. C og I stiger, så SE flytter mod højre. En lavere rente svækker
+  desuden typisk valutaen, hvilket løfter nettoeksporten.
 - **Kontraktiv pengepolitik** (højere rente) virker modsat.
 
-Et godt svar kan sige, hvilken vej kurven flytter sig, **og** hvad der sker med både
-produktion og prisniveau — ikke bare "så stiger BNP".
-
-**[TJEK]** Notationen for akserne (prisniveau/BNP) og om I bruger AD/AS eller SE/SU.
+Et godt svar kan sige, hvilken vej SE flytter sig, hvad der sker med både produktion og
+prisniveau langs SU-kort, **og** hvor økonomien ligger i forhold til SU-lang — ikke bare
+"så stiger BNP".
 
 ### Mikroscreening — Hofstedes kulturdimensioner
 
@@ -240,9 +242,6 @@ Hollensen inddeler i tre hovedformer med stigende engagement, kontrol og risiko:
 Valget afhænger af virksomhedens ressourcer, markedets størrelse og vækst, den psykiske
 afstand, den politiske risiko, behovet for kontrol, produktets kompleksitet og
 serviceniveau samt handelsbarriererne.
-
-**[TJEK]** Hollensens plus/minus-opstilling findes i flere varianter. Ret tabellen, så
-fordele og ulemper står, som de gør i holdets materiale.
 
 ---
 
