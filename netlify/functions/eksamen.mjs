@@ -26,6 +26,12 @@ import { BLOKKE, findBlok } from "../../src/eksamen/blokke.js";
  */
 const SAMTALE_MODEL = "claude-sonnet-5";
 
+/**
+ * Rapporten refereres med et file_id fra Files API, og det ligger under
+ * client.beta i denne SDK-version — derfor beta-headeren og beta.messages.
+ */
+const FILES_BETA = ["files-api-2025-04-14"];
+
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
@@ -224,7 +230,8 @@ function streamSvar(client, beskeder) {
     async start(controller) {
       const send = (t, v) => controller.enqueue(koder.encode(JSON.stringify({ t, v }) + "\n"));
       try {
-        const stream = client.messages.stream({
+        const stream = client.beta.messages.stream({
+          betas: FILES_BETA,
           model: SAMTALE_MODEL,
           max_tokens: 700,
           // Tænkning slået fra: i en mundtlig eksamen vejer svartiden tungere

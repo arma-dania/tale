@@ -13,6 +13,13 @@ import Anthropic, { toFile } from "@anthropic-ai/sdk";
 const MAKS_BYTES = 4.5 * 1024 * 1024;
 const OPRYDNING_MS = 2 * 60 * 60 * 1000;
 
+/**
+ * Files API ligger under client.beta i denne SDK-version. SDK'et sætter selv
+ * beta-headeren på beta.files-kaldene; den angives kun eksplicit ved upload,
+ * hvor den også skal følge med multipart-kaldet.
+ */
+const FILES_BETA = ["files-api-2025-04-14"];
+
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
@@ -22,10 +29,10 @@ const json = (data, status = 200) =>
 async function ryddeGamleFiler(client) {
   try {
     const graense = Date.now() - OPRYDNING_MS;
-    const liste = await client.files.list({ limit: 100 });
+    const liste = await client.beta.files.list({ limit: 100 });
     for (const fil of liste.data || []) {
       if (new Date(fil.created_at).getTime() < graense) {
-        await client.files.delete(fil.id).catch(() => {});
+        await client.beta.files.delete(fil.id).catch(() => {});
       }
     }
   } catch {
@@ -51,10 +58,10 @@ export default async (req) => {
   if (body.handling === "slet") {
     if (!body.fileId) return json({ error: "fileId mangler." }, 400);
     try {
-      await client.files.delete(body.fileId);
+      await client.beta.files.delete(body.fileId);
       return json({ slettet: true });
     } catch (e) {
-      return json({ error: "Kunne ikke slette filen.", detail: String(e) }, 502);
+      return json({ error: "Kunne ikke slette filen.", detail: e?.message || String(e) }, 502);
     }
   }
 
@@ -75,12 +82,13 @@ export default async (req) => {
   }
 
   try {
-    const fil = await client.files.upload({
+    const fil = await client.beta.files.upload({
       file: await toFile(bytes, body.filnavn || "rapport.pdf", { type: "application/pdf" }),
+      betas: FILES_BETA,
     });
     ryddeGamleFiler(client);
     return json({ fileId: fil.id, bytes: bytes.length });
   } catch (e) {
-    return json({ error: "Rapporten kunne ikke lægges op.", detail: String(e) }, 502);
+    return json({ error: "Rapporten kunne ikke lægges op.", detail: e?.message || String(e) }, 502);
   }
 };

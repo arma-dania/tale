@@ -28,7 +28,11 @@ export async function uploadRapport(fil) {
     body: JSON.stringify({ pdfBase64: await laesFilSomBase64(fil), filnavn: fil.name }),
   });
   const data = await res.json();
-  if (!res.ok) throw new Error(data.error || "Rapporten kunne ikke lægges op.");
+  if (!res.ok) {
+    throw new Error(
+      [data.error || "Rapporten kunne ikke lægges op.", data.detail].filter(Boolean).join(" ")
+    );
+  }
   return data.fileId;
 }
 
