@@ -19,6 +19,7 @@ import path from "node:path";
 import Anthropic from "@anthropic-ai/sdk";
 
 import { BLOKKE, findBlok } from "../../src/eksamen/blokke.js";
+import { udtraekReplik } from "../../src/eksamen/replik.js";
 
 /**
  * Modelvalg. Samtalen kører på den hurtige model, fordi hvert sekunds
@@ -91,16 +92,21 @@ Sidst i hvert af den studerendes svar står en linje mærket STYRING med den akt
 
 STYRING-linjen er systemets besked til dig, ikke noget den studerende har sagt. Nævn den aldrig, og læs den aldrig op.
 
-BOGFØRING
-Umiddelbart efter hver replik kalder du værktøjet bogfoer. Først replikken som almindelig tekst, så værktøjskaldet.`;
+SVARFORM
+Du svarer udelukkende ved at kalde værktøjet eksaminer. Feltet replik er det, du siger højt til den studerende; de øvrige felter er din bogføring, som den studerende ikke ser.`;
 
-const BOGFOER_VAERKTOEJ = {
-  name: "bogfoer",
+const EKSAMINER_VAERKTOEJ = {
+  name: "eksaminer",
   description:
-    "Bogfør, hvordan den aktuelle blok står efter den studerendes seneste svar. Kaldes én gang efter hver replik.",
+    "Sig din replik til den studerende og bogfør, hvordan den aktuelle blok står efter det seneste svar. Kaldes én gang per tur.",
   input_schema: {
     type: "object",
     properties: {
+      replik: {
+        type: "string",
+        description:
+          "Det, du siger højt til den studerende nu. Rent talesprog på dansk, højst 40 ord, ét spørgsmål ad gangen, uden punktopstillinger eller markdown.",
+      },
       blokStatus: {
         type: "string",
         enum: ["ikke_beroert", "delvist", "daekket"],
@@ -127,7 +133,7 @@ const BOGFOER_VAERKTOEJ = {
           "Ét til to sætninger på dansk til brug i den afsluttende vurdering: hvad den studerende konkret viste eller manglede i dette svar. Sagligt og konkret, uden ros eller løftede pegefingre.",
       },
     },
-    required: ["blokStatus", "gaaVidere", "varHjaelpespoergsmaal", "afslut", "notat"],
+    required: ["replik", "blokStatus", "gaaVidere", "varHjaelpespoergsmaal", "afslut", "notat"],
     additionalProperties: false,
   },
   strict: true,
@@ -239,18 +245,34 @@ function streamSvar(client, beskeder) {
           thinking: { type: "disabled" },
           output_config: { effort: "low" },
           system: systemBlokke(),
-          tools: [BOGFOER_VAERKTOEJ],
+          tools: [EKSAMINER_VAERKTOEJ],
+          // Fremtvunget: replikken skal komme, og den skal komme ét sted fra.
+          tool_choice: { type: "tool", name: EKSAMINER_VAERKTOEJ.name },
           messages: beskeder,
         });
 
+        // Replikken er værktøjets første felt, så den kan læses ud af den
+        // halve JSON og sendes videre, længe før bogføringen er skrevet.
+        let samlet = "";
+        let sendt = "";
+        const sendNyTekst = (tekst) => {
+          if (tekst.length > sendt.length && tekst.startsWith(sendt)) {
+            send("tekst", tekst.slice(sendt.length));
+            sendt = tekst;
+          }
+        };
+
         for await (const ev of stream) {
-          if (ev.type === "content_block_delta" && ev.delta.type === "text_delta") {
-            send("tekst", ev.delta.text);
+          if (ev.type === "content_block_delta" && ev.delta.type === "input_json_delta") {
+            samlet += ev.delta.partial_json;
+            const r = udtraekReplik(samlet);
+            if (r) sendNyTekst(r.tekst);
           }
         }
 
         const endelig = await stream.finalMessage();
         const kald = endelig.content.find((b) => b.type === "tool_use");
+        if (kald?.input?.replik) sendNyTekst(kald.input.replik);
         send("bogfoer", kald ? kald.input : null);
       } catch (e) {
         send("fejl", e?.message || String(e));
