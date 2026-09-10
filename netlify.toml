@@ -5,3 +5,8 @@
 
 [build.environment]
   NODE_VERSION = "20"
+
+# Pensumarket og læringsmålene læses af eksaminator-funktionen og skal
+# derfor pakkes med ud i funktionen.
+[functions]
+  included_files = ["src/pensum/**"]
