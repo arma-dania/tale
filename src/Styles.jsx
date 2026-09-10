@@ -70,6 +70,17 @@ export default function Styles() {
     .tl-ta { flex: 1; min-height: 78px; resize: vertical; border: 1.5px solid var(--line); border-radius: 8px; background: #fff; padding: 12px 14px; font-family: inherit; font-size: 15px; line-height: 1.55; color: var(--navy); outline: none; }
     .tl-ta:focus { border-color: var(--navy); }
 
+    .tl-delvis { color: var(--slate); font-style: italic; opacity: .75; }
+    .tl-advarsel { color: var(--err); }
+
+    .tl-mikrofon { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 18px; border-top: 1.5px solid var(--line); padding-top: 16px; }
+    .tl-tilstand { font-size: 14.5px; font-weight: 600; color: var(--slate); flex: 1 1 auto; }
+    .tl-lampe { width: 12px; height: 12px; border-radius: 50%; background: var(--neutral); border: 1.5px solid var(--line); flex-shrink: 0; }
+    .tl-lampe.lytter { background: var(--ok); border-color: var(--ok); animation: tlPuls 1.4s ease-in-out infinite; }
+    .tl-lampe.taler { background: var(--burgundy); border-color: var(--burgundy); }
+    @keyframes tlPuls { 0%, 100% { box-shadow: 0 0 0 0 rgba(59,109,17,.45); } 60% { box-shadow: 0 0 0 7px rgba(59,109,17,0); } }
+    .tl-link { background: none; border: none; color: var(--burgundy); font-weight: 700; cursor: pointer; font-size: 13px; padding: 0; text-decoration: underline; font-family: inherit; }
+
     .tl-panel { border: 1.5px solid var(--line); border-top: 3px solid var(--burgundy); border-radius: 10px; background: #fff; padding: 26px 22px; text-align: center; }
     .tl-prompt { font-family: 'Fraunces', serif; font-size: clamp(22px, 4vw, 30px); font-weight: 700; margin: 8px 0 6px; color: var(--navy); }
     .tl-sub { color: var(--slate); font-size: 14.5px; margin: 0; line-height: 1.55; }

@@ -49,7 +49,9 @@ export function sletRapport(fileId) {
 /**
  * Henter eksaminators næste replik.
  *
- * `paaTekst` kaldes for hvert stykke tekst, efterhånden som det kommer.
+ * `paaTekst(samlet, stykke)` kaldes for hvert stykke tekst, efterhånden som
+ * det kommer — `samlet` til skærmen, `stykke` til stemmen, der skal dele
+ * replikken op i sætninger undervejs.
  * Returnerer bogføringen, når replikken er færdig.
  */
 export async function hentReplik(payload, paaTekst) {
@@ -85,7 +87,7 @@ export async function hentReplik(payload, paaTekst) {
     }
     if (h.t === "tekst") {
       tekst += h.v;
-      paaTekst?.(tekst);
+      paaTekst?.(tekst, h.v);
     } else if (h.t === "bogfoer") {
       bogfoering = h.v;
     } else if (h.t === "fejl") {

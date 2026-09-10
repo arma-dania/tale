@@ -10,7 +10,12 @@ import {
   DAEKNING,
 } from "./eksamen/klokke.js";
 import { hentReplik, uploadRapport, sletRapport, MAKS_RAPPORT_BYTES } from "./eksamen/klient.js";
+import { SaetningsSamler } from "./stemme/saetninger.js";
+import { Stemme, bedOmMikrofon, SVAR_SLUT_STILHED_MS } from "./stemme/stemme.js";
 import Styles from "./Styles.jsx";
+
+/** Hvor længe der ventes på et svar, der aldrig kommer, før eksaminator går videre. */
+const INTET_SVAR_MS = 20000;
 
 /* --------------------------- skærm 1: introduktion --------------------------- */
 
@@ -26,16 +31,18 @@ function Intro({ videre }) {
       <div className="tl-callout">
         <b>Sådan foregår det</b>
         <br />
-        Eksaminator stiller spørgsmålene, og du svarer. Du får ingen rettelser undervejs —
-        ligesom til den rigtige prøve. Kan du ikke svare, får du ét hjælpespørgsmål, og så
-        går eksaminator videre. Uret stopper ikke, og du kan ikke tage en pause.
+        Eksaminator stiller spørgsmålene, og du svarer — du taler, og der bliver talt
+        tilbage. Du får ingen rettelser undervejs, ligesom til den rigtige prøve. Kan du
+        ikke svare, får du ét hjælpespørgsmål, og så går eksaminator videre. Uret stopper
+        ikke, og du kan ikke tage en pause.
       </div>
 
       <div className="tl-callout">
         <b>Om dine data</b>
         <br />
-        Det, du siger, og den rapport du eventuelt lægger op, sendes til Anthropic uden for
-        EU for at kunne behandles. Intet gemmes hos os: der er ingen database, rapporten
+        Din stemme sendes til Microsoft for at blive omsat til tekst og tilbage til tale,
+        og samtalen og den rapport, du eventuelt lægger op, sendes til Anthropic. Begge
+        dele foregår uden for EU. Intet gemmes hos os: der er ingen database, rapporten
         slettes, når du er færdig, og lukker du fanen, er alt væk — også din vurdering.
         Hent den, inden du lukker.
       </div>
@@ -59,18 +66,26 @@ function Opsaetning({ start }) {
 
   async function begynd() {
     setFejl("");
-    if (tilstand === "uden_rapport") {
-      start({ tilstand: "uden_rapport", fileId: null });
-      return;
-    }
-    if (!fil) {
+    if (tilstand === "med_rapport" && !fil) {
       setFejl("Vælg din rapport som PDF først.");
       return;
     }
     setArbejder(true);
+
+    // Mikrofonen skal spørges om lov nu, mens trykket på knappen stadig
+    // gælder som et samtykke i browseren.
+    let stemmeAktiv = true;
+    let stemmeFejl = "";
     try {
-      const fileId = await uploadRapport(fil);
-      start({ tilstand: "med_rapport", fileId });
+      await bedOmMikrofon();
+    } catch {
+      stemmeAktiv = false;
+      stemmeFejl = "Der er ikke adgang til mikrofonen, så eksamen føres skriftligt.";
+    }
+
+    try {
+      const fileId = tilstand === "med_rapport" ? await uploadRapport(fil) : null;
+      start({ tilstand, fileId, stemmeAktiv, stemmeFejl });
     } catch (e) {
       setFejl(e.message);
       setArbejder(false);
@@ -117,8 +132,8 @@ function Opsaetning({ start }) {
             <span>{fil ? fil.name : "Vælg din rapport (PDF)"}</span>
           </label>
           <p className="tl-hint">
-            Kun PDF, højst {Math.round(MAKS_RAPPORT_BYTES / (1024 * 1024) * 10) / 10} MB. Figurer,
-            tabeller og beregninger læses med, så eksaminator kan spørge til dem.
+            Kun PDF, højst {Math.round((MAKS_RAPPORT_BYTES / (1024 * 1024)) * 10) / 10} MB.
+            Figurer, tabeller og beregninger læses med, så eksaminator kan spørge til dem.
           </p>
         </div>
       )}
@@ -130,20 +145,23 @@ function Opsaetning({ start }) {
           {arbejder ? (
             <>
               <span className="tl-spinner" />
-              Lægger rapporten op…
+              Gør klar…
             </>
           ) : (
             "Start eksamen"
           )}
         </button>
       </div>
+      <p className="tl-hint">
+        Brug gerne headset. Værktøjet åbner mikrofonen, når du trykker.
+      </p>
     </div>
   );
 }
 
 /* --------------------------- skærm 3: eksaminationen --------------------------- */
 
-function Eksamen({ tilstand, fileId, faerdig }) {
+function Eksamen({ tilstand, fileId, stemmeAktiv, stemmeFejlFraStart, faerdig }) {
   const [state, setState] = useState(() => nyEksamen());
   const [historik, setHistorik] = useState([]);
   const [notater, setNotater] = useState([]);
@@ -152,8 +170,23 @@ function Eksamen({ tilstand, fileId, faerdig }) {
   const [venter, setVenter] = useState(true);
   const [fejl, setFejl] = useState("");
   const [nu, setNu] = useState(() => Date.now());
+
+  const [medStemme, setMedStemme] = useState(stemmeAktiv);
+  const [stemmeBesked, setStemmeBesked] = useState(stemmeFejlFraStart || "");
+  const [taleTilstand, setTaleTilstand] = useState("stille"); // stille | taler | lytter
+  const [delvis, setDelvis] = useState("");
+
   const startet = useRef(false);
   const bund = useRef(null);
+  const stemmeRef = useRef(null);
+  const taleKoe = useRef(Promise.resolve());
+  const segmenter = useRef([]);
+  const stilhedsUr = useRef(null);
+  const sender = useRef(false);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const historikRef = useRef(historik);
+  historikRef.current = historik;
 
   const status = tidsstatus(state, nu);
   const blok = findBlok(state.blokId);
@@ -163,11 +196,10 @@ function Eksamen({ tilstand, fileId, faerdig }) {
     return () => clearInterval(id);
   }, []);
 
-  // Rul samtalen ned, uden at flytte hele siden.
   useEffect(() => {
     const felt = bund.current;
     if (felt) felt.scrollTop = felt.scrollHeight;
-  }, [historik, live]);
+  }, [historik, live, delvis]);
 
   const byggStyring = useCallback((s, tidspunkt) => {
     const t = tidsstatus(s, tidspunkt);
@@ -182,83 +214,225 @@ function Eksamen({ tilstand, fileId, faerdig }) {
     };
   }, []);
 
-  const modtag = useCallback((replik, bogfoering, blokId, tidspunkt) => {
-    setHistorik((h) => [...h, { rolle: "eksaminator", tekst: replik }]);
-    setLive("");
-    if (bogfoering?.notat) {
-      setNotater((n) => [
-        ...n,
-        { blokId, notat: bogfoering.notat, status: bogfoering.blokStatus },
-      ]);
-    }
-    setState((s) => efterTur(s, bogfoering || {}, tidspunkt));
+  /* ---------- stemmen ---------- */
+
+  const sigIKoe = useCallback((saetning) => {
+    const stemme = stemmeRef.current;
+    if (!stemme || !saetning) return;
+    taleKoe.current = taleKoe.current
+      .then(() => stemme.sig(saetning))
+      .catch((e) => setStemmeBesked(e.message || "Stemmen svigtede."));
   }, []);
 
-  // Første spørgsmål. Uret starter først, når eksaminator har talt.
-  useEffect(() => {
-    if (startet.current) return;
-    startet.current = true;
+  const stopStilhedsUr = useCallback(() => {
+    clearTimeout(stilhedsUr.current);
+    stilhedsUr.current = null;
+  }, []);
 
-    (async () => {
+  // Svaret må kun sendes én gang per lytterunde — både stilhedsuret og
+  // "Færdig med svaret" peger herhen, og de kan ramme i samme øjeblik.
+  const afslutSvar = useCallback(async () => {
+    if (sender.current) return undefined;
+    sender.current = true;
+    stopStilhedsUr();
+    setTaleTilstand("stille");
+    setDelvis("");
+    await stemmeRef.current?.stopLyt().catch(() => {});
+    const tekst = segmenter.current.join(" ").trim();
+    segmenter.current = [];
+    return tekst;
+  }, [stopStilhedsUr]);
+
+  /* ---------- en tur ---------- */
+
+  const koerTur = useCallback(
+    async (payload, blokId) => {
+      setVenter(true);
+      setFejl("");
+      setLive("");
+
+      const samler = new SaetningsSamler();
       try {
-        const frisk = nyEksamen();
-        const { tekst, bogfoering } = await hentReplik(
-          { handling: "start", tilstand, fileId, styring: byggStyring(frisk, Date.now()) },
-          setLive
-        );
+        const { tekst: replik, bogfoering } = await hentReplik(payload, (samlet, stykke) => {
+          setLive(samlet);
+          if (stemmeRef.current) {
+            setTaleTilstand("taler");
+            samler.tilfoej(stykke).forEach(sigIKoe);
+          }
+        });
+
+        if (stemmeRef.current) {
+          sigIKoe(samler.rest());
+          await taleKoe.current.catch(() => {});
+        }
+
         const tidspunkt = Date.now();
-        setState({ ...frisk, startTid: tidspunkt, blokStartTid: tidspunkt });
-        setNu(tidspunkt);
-        modtag(tekst, bogfoering, frisk.blokId, tidspunkt);
+        setHistorik((h) => [...h, { rolle: "eksaminator", tekst: replik }]);
+        setLive("");
+        if (bogfoering?.notat) {
+          setNotater((n) => [...n, { blokId, notat: bogfoering.notat, status: bogfoering.blokStatus }]);
+        }
+        setState((s) => efterTur(s, bogfoering || {}, tidspunkt));
+        return bogfoering;
       } catch (e) {
         setFejl(e.message);
+        return null;
       } finally {
         setVenter(false);
+        setTaleTilstand("stille");
       }
-    })();
-  }, [tilstand, fileId, byggStyring, modtag]);
+    },
+    [sigIKoe]
+  );
 
-  async function send() {
-    const tekst = svar.trim();
-    if (!tekst || venter || state.faerdig) return;
+  /* ---------- lyt efter den studerendes svar ---------- */
 
-    const tidspunkt = Date.now();
-    const nyHistorik = [...historik, { rolle: "studerende", tekst }];
-    const blokId = state.blokId;
+  const sendSvar = useCallback(
+    async (tekst) => {
+      const tidspunkt = Date.now();
+      const blokId = stateRef.current.blokId;
+      const nyHistorik = [...historikRef.current, { rolle: "studerende", tekst }];
+      setHistorik(nyHistorik);
+      setSvar("");
 
-    setHistorik(nyHistorik);
-    setSvar("");
-    setLive("");
-    setVenter(true);
-    setFejl("");
-
-    try {
-      const { tekst: replik, bogfoering } = await hentReplik(
+      await koerTur(
         {
           handling: "tur",
           tilstand,
           fileId,
           historik: nyHistorik,
-          styring: byggStyring(state, tidspunkt),
+          styring: byggStyring(stateRef.current, tidspunkt),
         },
-        setLive
+        blokId
       );
-      modtag(replik, bogfoering, blokId, Date.now());
+    },
+    [koerTur, byggStyring, tilstand, fileId]
+  );
+
+  const startLytning = useCallback(async () => {
+    const stemme = stemmeRef.current;
+    if (!stemme || stateRef.current.faerdig) return;
+
+    segmenter.current = [];
+    sender.current = false;
+    setDelvis("");
+    setTaleTilstand("lytter");
+
+    const slutSvaret = async () => {
+      const tekst = await afslutSvar();
+      if (tekst === undefined) return;
+      await sendSvar(tekst);
+    };
+
+    const nulstil = (ms) => {
+      clearTimeout(stilhedsUr.current);
+      stilhedsUr.current = setTimeout(slutSvaret, ms);
+    };
+
+    try {
+      await stemme.lyt({
+        paaDelvist: (t) => {
+          setDelvis(t);
+          nulstil(SVAR_SLUT_STILHED_MS);
+        },
+        paaSegment: (t) => {
+          segmenter.current.push(t);
+          setDelvis("");
+          nulstil(SVAR_SLUT_STILHED_MS);
+        },
+        paaFejl: (b) => setStemmeBesked(b),
+      });
+      // Siger den studerende slet ingenting, går eksaminator videre af sig selv.
+      nulstil(INTET_SVAR_MS);
     } catch (e) {
-      setFejl(e.message);
-    } finally {
-      setVenter(false);
+      setStemmeBesked((e.message || "Mikrofonen kunne ikke åbnes.") + " Skriv dit svar i stedet.");
+      setMedStemme(false);
+      setTaleTilstand("stille");
     }
+  }, [afslutSvar, sendSvar]);
+
+  /* ---------- opstart ---------- */
+
+  useEffect(() => {
+    if (startet.current) return;
+    startet.current = true;
+
+    (async () => {
+      if (stemmeAktiv) {
+        try {
+          stemmeRef.current = await Stemme.opret();
+        } catch (e) {
+          stemmeRef.current = null;
+          setMedStemme(false);
+          setStemmeBesked((e.message || "Stemmen kunne ikke startes.") + " Eksamen føres skriftligt.");
+        }
+      }
+
+      const frisk = nyEksamen();
+      const tidspunkt = Date.now();
+      setState({ ...frisk, startTid: tidspunkt, blokStartTid: tidspunkt });
+      setNu(tidspunkt);
+
+      // Mikrofonen åbnes af effekten nedenfor, når eksaminator er talt færdig.
+      await koerTur(
+        {
+          handling: "start",
+          tilstand,
+          fileId,
+          styring: byggStyring(frisk, tidspunkt),
+        },
+        frisk.blokId
+      );
+    })();
+  }, [stemmeAktiv, tilstand, fileId, koerTur, byggStyring]);
+
+  /* ---------- efter hver tur: lyt igen ---------- */
+
+  const sidsteRolle = historik.length ? historik[historik.length - 1].rolle : null;
+  useEffect(() => {
+    if (!medStemme || !stemmeRef.current) return;
+    if (venter || state.faerdig) return;
+    if (sidsteRolle !== "eksaminator") return;
+    if (taleTilstand === "lytter") return;
+    startLytning();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sidsteRolle, historik.length, venter, state.faerdig, medStemme]);
+
+  /* ---------- oprydning ---------- */
+
+  useEffect(() => {
+    if (!state.faerdig) return;
+    stopStilhedsUr();
+    stemmeRef.current?.luk();
+    stemmeRef.current = null;
+    faerdig();
+  }, [state.faerdig, faerdig, stopStilhedsUr]);
+
+  useEffect(() => {
+    return () => {
+      clearTimeout(stilhedsUr.current);
+      stemmeRef.current?.luk();
+      stemmeRef.current = null;
+    };
+  }, []);
+
+  async function sendSkrevet() {
+    const tekst = svar.trim();
+    if (!tekst || venter || state.faerdig) return;
+    await sendSvar(tekst);
   }
 
-  // Rapporten skal væk, så snart eksamen er forbi — ikke først når fanen lukkes.
-  useEffect(() => {
-    if (state.faerdig) faerdig();
-  }, [state.faerdig, faerdig]);
+  async function faerdigMedSvaret() {
+    const tekst = await afslutSvar();
+    if (tekst === undefined) return;
+    await sendSvar(tekst);
+  }
 
   if (state.faerdig) {
     return <Afslutning state={state} notater={notater} />;
   }
+
+  const lytter = taleTilstand === "lytter";
 
   return (
     <div className="tl-fade">
@@ -306,36 +480,72 @@ function Eksamen({ tilstand, fileId, faerdig }) {
             <span className="hvem">Eksaminator</span>
             <p className="tl-taenker">
               <span className="tl-spinner dark" />
-              {historik.length === 0 && tilstand === "med_rapport"
-                ? "læser din rapport…"
-                : "…"}
+              {historik.length === 0 && tilstand === "med_rapport" ? "læser din rapport…" : "…"}
             </p>
+          </div>
+        )}
+        {delvis && (
+          <div className="tl-tur studerende">
+            <span className="hvem">Dig</span>
+            <p className="tl-delvis">{delvis}</p>
           </div>
         )}
       </div>
 
       {fejl && <p className="tl-err">{fejl}</p>}
+      {stemmeBesked && <p className="tl-hint tl-advarsel">{stemmeBesked}</p>}
 
-      <div className="tl-svarfelt">
-        <textarea
-          className="tl-ta"
-          value={svar}
-          disabled={venter}
-          placeholder="Skriv dit svar…"
-          onChange={(e) => setSvar(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) send();
-          }}
-        />
-        <button className="tl-btn accent" onClick={send} disabled={venter || !svar.trim()}>
-          Svar
-        </button>
-      </div>
-      <p className="tl-hint">
-        {status.tidenErBrugt
-          ? "Tiden er gået. Svar en sidste gang, så runder eksaminator af."
-          : "Stemmen kommer i næste etape. Indtil da svarer du skriftligt — ⌘/Ctrl + Enter sender."}
-      </p>
+      {medStemme ? (
+        <div className="tl-mikrofon">
+          <span className={"tl-lampe" + (lytter ? " lytter" : taleTilstand === "taler" ? " taler" : "")} />
+          <span className="tl-tilstand">
+            {taleTilstand === "taler"
+              ? "Eksaminator taler"
+              : lytter
+                ? "Jeg lytter — sig dit svar"
+                : venter
+                  ? "Eksaminator tænker"
+                  : "Et øjeblik"}
+          </span>
+          <button className="tl-btn sm" onClick={faerdigMedSvaret} disabled={!lytter}>
+            Færdig med svaret
+          </button>
+          <button
+            className="tl-link"
+            onClick={() => {
+              stemmeRef.current?.luk();
+              stemmeRef.current = null;
+              setMedStemme(false);
+              setTaleTilstand("stille");
+            }}
+          >
+            Skriv i stedet
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="tl-svarfelt">
+            <textarea
+              className="tl-ta"
+              value={svar}
+              disabled={venter}
+              placeholder="Skriv dit svar…"
+              onChange={(e) => setSvar(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) sendSkrevet();
+              }}
+            />
+            <button className="tl-btn accent" onClick={sendSkrevet} disabled={venter || !svar.trim()}>
+              Svar
+            </button>
+          </div>
+          <p className="tl-hint">
+            {status.tidenErBrugt
+              ? "Tiden er gået. Svar en sidste gang, så runder eksaminator af."
+              : "⌘/Ctrl + Enter sender."}
+          </p>
+        </>
+      )}
     </div>
   );
 }
@@ -388,7 +598,12 @@ function Afslutning({ state, notater }) {
 
 export default function App() {
   const [skaerm, setSkaerm] = useState("intro");
-  const [opsaetning, setOpsaetning] = useState({ tilstand: null, fileId: null });
+  const [opsaetning, setOpsaetning] = useState({
+    tilstand: null,
+    fileId: null,
+    stemmeAktiv: false,
+    stemmeFejl: "",
+  });
 
   const rydRapport = useCallback(() => sletRapport(opsaetning.fileId), [opsaetning.fileId]);
 
@@ -422,6 +637,8 @@ export default function App() {
           <Eksamen
             tilstand={opsaetning.tilstand}
             fileId={opsaetning.fileId}
+            stemmeAktiv={opsaetning.stemmeAktiv}
+            stemmeFejlFraStart={opsaetning.stemmeFejl}
             faerdig={rydRapport}
           />
         )}
