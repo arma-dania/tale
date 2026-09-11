@@ -9,7 +9,14 @@ import {
   formatTid,
   DAEKNING,
 } from "./eksamen/klokke.js";
-import { hentReplik, uploadRapport, sletRapport, MAKS_RAPPORT_BYTES } from "./eksamen/klient.js";
+import {
+  hentReplik,
+  hentVurdering,
+  uploadRapport,
+  sletRapport,
+  MAKS_RAPPORT_BYTES,
+} from "./eksamen/klient.js";
+import { hentVurderingsPdf } from "./vurdering/pdf.js";
 import { SaetningsSamler } from "./stemme/saetninger.js";
 import { Stemme, bedOmMikrofon, SVAR_SLUT_STILHED_MS } from "./stemme/stemme.js";
 import Styles from "./Styles.jsx";
@@ -429,7 +436,9 @@ function Eksamen({ tilstand, fileId, stemmeAktiv, stemmeFejlFraStart, faerdig })
   }
 
   if (state.faerdig) {
-    return <Afslutning state={state} notater={notater} />;
+    return (
+      <Afslutning state={state} notater={notater} historik={historik} tilstand={tilstand} />
+    );
   }
 
   const lytter = taleTilstand === "lytter";
@@ -552,44 +561,146 @@ function Eksamen({ tilstand, fileId, stemmeAktiv, stemmeFejlFraStart, faerdig })
 
 /* --------------------------- skærm 4: afslutning --------------------------- */
 
-function Afslutning({ state, notater }) {
+function Afslutning({ state, notater, historik, tilstand }) {
   const grad = daekningsgrad(state);
+  const [vurdering, setVurdering] = useState(null);
+  const [fejl, setFejl] = useState("");
+  const [henter, setHenter] = useState(false);
+  const [pdfFejl, setPdfFejl] = useState("");
+  const bedt = useRef(false);
+
+  const voter = useCallback(async () => {
+    setHenter(true);
+    setFejl("");
+    try {
+      setVurdering(
+        await hentVurdering({
+          tilstand,
+          historik,
+          daekning: state.daekning,
+          notater,
+        })
+      );
+    } catch (e) {
+      setFejl(e.message);
+    } finally {
+      setHenter(false);
+    }
+  }, [tilstand, historik, state.daekning, notater]);
+
+  useEffect(() => {
+    if (bedt.current) return;
+    bedt.current = true;
+    voter();
+  }, [voter]);
+
+  async function hentPdf() {
+    setPdfFejl("");
+    try {
+      await hentVurderingsPdf({ vurdering, daekning: state.daekning, tilstand });
+    } catch (e) {
+      setPdfFejl(e.message || "Filen kunne ikke dannes.");
+    }
+  }
 
   return (
     <div className="tl-fade">
       <div className="tl-panel">
         <p className="tl-eyebrow">Eksaminationen er slut</p>
-        <p className="tl-prompt">Du nåede {grad} % af pensum</p>
-        <p className="tl-sub">
-          Den skriftlige vurdering med karakter kommer i tredje etape. Indtil videre kan du
-          se, hvordan de syv områder står.
-        </p>
+        {henter && (
+          <>
+            <p className="tl-prompt">Eksaminator voterer</p>
+            <p className="tl-sub">
+              <span className="tl-spinner dark" />
+              Vurderingen skrives — det tager et øjeblik.
+            </p>
+          </>
+        )}
+        {!henter && vurdering && (
+          <>
+            <p className="tl-eyebrow" style={{ marginTop: 10 }}>Vejledende karakter</p>
+            <p className="tl-karakter">{vurdering.karakter}</p>
+            <p className="tl-sub">Du nåede {grad} % af pensum</p>
+          </>
+        )}
+        {!henter && !vurdering && (
+          <>
+            <p className="tl-prompt">Du nåede {grad} % af pensum</p>
+            <p className="tl-sub">Vurderingen mangler endnu.</p>
+          </>
+        )}
       </div>
+
+      {fejl && (
+        <>
+          <p className="tl-err">{fejl}</p>
+          <div className="tl-btnrow">
+            <button className="tl-btn sm" onClick={voter} disabled={henter}>
+              Prøv igen
+            </button>
+          </div>
+        </>
+      )}
+
+      {vurdering && (
+        <>
+          <div className="tl-vurdering">
+            <p>{vurdering.begrundelse}</p>
+            <h4>Hovedindtryk</h4>
+            <p>{vurdering.hovedindtryk}</p>
+
+            {vurdering.styrker?.length > 0 && (
+              <>
+                <h4>Det sad godt</h4>
+                <ul>
+                  {vurdering.styrker.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+
+            {vurdering.forbedringer?.length > 0 && (
+              <>
+                <h4>Det bør du arbejde med</h4>
+                <ul>
+                  {vurdering.forbedringer.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </>
+            )}
+          </div>
+
+          <div className="tl-btnrow">
+            <button className="tl-btn accent" onClick={hentPdf}>
+              Hent vurderingen som PDF
+            </button>
+          </div>
+          {pdfFejl && <p className="tl-err">{pdfFejl}</p>}
+          <p className="tl-hint tl-advarsel">
+            Hent filen nu. Lukker du fanen, er vurderingen væk — der gemmes intet.
+          </p>
+        </>
+      )}
 
       <div className="tl-oversigt">
         {BLOKKE.map((b) => {
           const d = state.daekning[b.id];
           const tekst =
             d === DAEKNING.DAEKKET ? "Dækket" : d === DAEKNING.DELVIST ? "Delvist" : "Ikke nået";
+          const linje = (vurdering?.omraader || []).find((o) => o.blokId === b.id)?.vurdering;
           return (
             <div className={"tl-raekke " + d} key={b.id}>
-              <span className="navn">{b.navn}</span>
+              <div className="indhold">
+                <span className="navn">{b.navn}</span>
+                {linje && <span className="linje">{linje}</span>}
+              </div>
               <span className="mrk">{tekst}</span>
             </div>
           );
         })}
       </div>
-
-      {notater.length > 0 && (
-        <div className="tl-notater">
-          <h4>Eksaminators notater</h4>
-          {notater.map((n, i) => (
-            <p key={i}>
-              <b>{findBlok(n.blokId)?.navn}:</b> {n.notat}
-            </p>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

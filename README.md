@@ -8,15 +8,18 @@ den rigtige prøve — og føres igennem alle syv områder af pensum. Værktøje
 **med rapport**, hvor spørgsmålene forankres i gruppens afleverede projekt, og **uden
 rapport**, hvor der eksamineres i modellerne selv.
 
-## Status
+## Sådan hænger det sammen
 
-Bygges i tre etaper. Etape 1 er færdig:
+Den studerende lægger sit projekt op som PDF, bliver eksamineret mundtligt i femten
+minutter og henter til sidst en skriftlig vurdering med en vejledende karakter.
 
-- [x] **Etape 1** — eksamensmotoren: PDF-rapporten læses, uret styrer tempoet gennem de
-      syv blokke, eksaminator stiller spørgsmål og bogfører dækningen.
-- [x] **Etape 2** — stemmelaget: den studerende taler, og eksaminator svarer mundtligt.
-      Skrift bruges som reserve, hvis mikrofon eller stemmetjeneste svigter.
-- [ ] **Etape 3** — den skriftlige vurdering som PDF med karakter.
+| Del | Hvor |
+|---|---|
+| Eksamensmotoren: rapporten læses, uret styrer tempoet gennem de syv blokke, eksaminator spørger og bogfører | `netlify/functions/eksamen.mjs`, `src/eksamen/` |
+| Stemmelaget: den studerende taler, eksaminator svarer mundtligt | `netlify/functions/stemme.mjs`, `src/stemme/` |
+| Voteringen og vurderingen som PDF | `netlify/functions/vurdering.mjs`, `src/vurdering/` |
+
+Skrift bruges som reserve hele vejen, hvis mikrofon eller stemmetjeneste svigter.
 
 ## Sådan sættes det op
 
@@ -56,7 +59,26 @@ programmering nødvendig.
 | `src/pensum/laeringsmaal.md` | Læringsmål og bedømmelsesgrundlag fra studieordningen. |
 | `src/eksamen/blokke.js` | De syv blokke, deres emner og fordelingen af de femten minutter. Summen af `minutter` bør give 15. |
 | `netlify/functions/eksamen.mjs` | Eksaminatorens rolle og regler (`ROLLE`) samt modelvalget (`SAMTALE_MODEL`). |
+| `netlify/functions/vurdering.mjs` | Hvordan der bedømmes (`ROLLE`) og karakterskalaens ordlyd (`KARAKTERSKALA`). |
 | `src/stemme/stemme.js` | Turtagningen: hvor længe der må være stille, før et svar regnes for slut. |
+
+## Sådan bedømmes der
+
+Voteringen kører på den kraftigste model med hele samtalen, eksaminators løbende notater
+og oversigten over, hvor langt den studerende nåede. Karakteren sættes efter
+7-trins-skalaens egne formuleringer om graden af målopfyldelse, og studieordningens to
+krav til den mundtlige prøve vejer tungest: at kunne perspektivere fra det konkrete i
+analyserne, og at vise indsigt i og vurdering af analyserne i dialogen. Områder, der ikke
+blev nået, fordi tiden løb ud, tæller hverken for eller imod; områder, hvor den
+studerende ikke kunne svare, tæller som mangler.
+
+Karakteren dækker **alene den mundtlige præstation**. Studieordningens karakter er en
+helhedsbedømmelse af projekt og mundtlig prøve under ét, inklusive formalia og
+kildehenvisninger, og det kan værktøjet ikke gøre. Forbeholdet står både på skærmen og i
+PDF'en.
+
+PDF'en dannes i browseren med jsPDF og sendes ingen steder hen. Lukker den studerende
+fanen uden at hente den, er vurderingen væk — det er prisen for, at intet gemmes.
 
 ## Sådan virker turtagningen
 

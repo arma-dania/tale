@@ -85,9 +85,19 @@ export default function Styles() {
     .tl-prompt { font-family: 'Fraunces', serif; font-size: clamp(22px, 4vw, 30px); font-weight: 700; margin: 8px 0 6px; color: var(--navy); }
     .tl-sub { color: var(--slate); font-size: 14.5px; margin: 0; line-height: 1.55; }
 
+    .tl-karakter { font-family: 'Fraunces', serif; font-weight: 800; font-size: 64px; line-height: 1; color: var(--burgundy); margin: 4px 0 8px; }
+
+    .tl-vurdering { margin-top: 20px; border: 1.5px solid var(--line); border-left: 4px solid var(--navy); border-radius: 0 10px 10px 0; background: #fff; padding: 20px 22px; }
+    .tl-vurdering h4 { font-family: 'Fraunces', serif; font-size: 16px; margin: 18px 0 6px; color: var(--navy); }
+    .tl-vurdering p { margin: 0 0 6px; font-size: 15px; line-height: 1.65; color: var(--ink); }
+    .tl-vurdering ul { margin: 0; padding-left: 20px; }
+    .tl-vurdering li { font-size: 15px; line-height: 1.6; color: var(--ink); margin-bottom: 6px; }
+
     .tl-oversigt { margin-top: 20px; border: 1.5px solid var(--line); border-radius: 10px; overflow: hidden; background: #fff; }
-    .tl-raekke { display: flex; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); font-size: 14.5px; }
+    .tl-raekke { display: flex; justify-content: space-between; gap: 14px; padding: 12px 16px; border-top: 1px solid var(--line); font-size: 14.5px; align-items: flex-start; }
     .tl-raekke:first-child { border-top: none; }
+    .tl-raekke .indhold { display: flex; flex-direction: column; gap: 3px; }
+    .tl-raekke .linje { font-size: 13.5px; line-height: 1.55; color: var(--slate); }
     .tl-raekke .navn { color: var(--navy); font-weight: 600; }
     .tl-raekke .mrk { font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--slate); white-space: nowrap; }
     .tl-raekke.daekket .mrk { color: var(--ok); }

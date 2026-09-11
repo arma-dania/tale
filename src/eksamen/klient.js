@@ -47,24 +47,21 @@ export function sletRapport(fileId) {
 }
 
 /**
- * Henter eksaminators næste replik.
- *
- * `paaTekst(samlet, stykke)` kaldes for hvert stykke tekst, efterhånden som
- * det kommer — `samlet` til skærmen, `stykke` til stemmen, der skal dele
- * replikken op i sætninger undervejs.
- * Returnerer bogføringen, når replikken er færdig.
+ * Kalder en af de streamede funktioner og kører `paaHaendelse` for hver linje.
+ * En fejl-hændelse fra serveren kastes videre som en almindelig fejl.
  */
-export async function hentReplik(payload, paaTekst) {
-  const res = await fetch("/.netlify/functions/eksamen", {
+async function streamKald(sti, payload, standardfejl, paaHaendelse) {
+  const res = await fetch(sti, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
-    let besked = "Eksaminator svarede ikke.";
+    let besked = standardfejl;
     try {
-      besked = (await res.json()).error || besked;
+      const data = await res.json();
+      besked = [data.error || standardfejl, data.detail].filter(Boolean).join(" ");
     } catch {
       // behold standardbeskeden
     }
@@ -74,8 +71,6 @@ export async function hentReplik(payload, paaTekst) {
   const laeser = res.body.getReader();
   const afkoder = new TextDecoder();
   let rest = "";
-  let bogfoering = null;
-  let tekst = "";
 
   const behandl = (linje) => {
     if (!linje.trim()) return;
@@ -85,14 +80,8 @@ export async function hentReplik(payload, paaTekst) {
     } catch {
       return;
     }
-    if (h.t === "tekst") {
-      tekst += h.v;
-      paaTekst?.(tekst, h.v);
-    } else if (h.t === "bogfoer") {
-      bogfoering = h.v;
-    } else if (h.t === "fejl") {
-      throw new Error(h.v);
-    }
+    if (h.t === "fejl") throw new Error(h.v);
+    paaHaendelse(h);
   };
 
   for (;;) {
@@ -104,7 +93,46 @@ export async function hentReplik(payload, paaTekst) {
     linjer.forEach(behandl);
   }
   behandl(rest);
+}
+
+/**
+ * Henter eksaminators næste replik.
+ *
+ * `paaTekst(samlet, stykke)` kaldes for hvert stykke tekst, efterhånden som
+ * det kommer — `samlet` til skærmen, `stykke` til stemmen, der skal dele
+ * replikken op i sætninger undervejs.
+ * Returnerer bogføringen, når replikken er færdig.
+ */
+export async function hentReplik(payload, paaTekst) {
+  let tekst = "";
+  let bogfoering = null;
+
+  await streamKald("/.netlify/functions/eksamen", payload, "Eksaminator svarede ikke.", (h) => {
+    if (h.t === "tekst") {
+      tekst += h.v;
+      paaTekst?.(tekst, h.v);
+    } else if (h.t === "bogfoer") {
+      bogfoering = h.v;
+    }
+  });
 
   if (!tekst.trim()) throw new Error("Eksaminator svarede ikke. Prøv igen.");
   return { tekst: tekst.trim(), bogfoering };
+}
+
+/** Henter den afsluttende vurdering. Kaldet svarer til voteringen og tager tid. */
+export async function hentVurdering(payload) {
+  let vurdering = null;
+
+  await streamKald(
+    "/.netlify/functions/vurdering",
+    payload,
+    "Vurderingen kunne ikke skrives.",
+    (h) => {
+      if (h.t === "vurdering") vurdering = h.v;
+    }
+  );
+
+  if (!vurdering) throw new Error("Der kom ingen vurdering tilbage. Prøv igen.");
+  return vurdering;
 }
