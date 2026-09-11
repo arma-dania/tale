@@ -51,12 +51,7 @@ export default function Styles() {
     .tl-ur .tid { font-family: 'Spline Sans Mono', monospace; font-size: 26px; font-weight: 600; color: var(--navy); }
     .tl-ur .tid.knap { color: var(--err); }
     .tl-ur .cap { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--slate); }
-    .tl-blokspor { display: flex; align-items: center; gap: 6px; }
-    .tl-blokspor .prik { width: 9px; height: 9px; border-radius: 50%; background: var(--neutral); border: 1.5px solid var(--line); }
-    .tl-blokspor .prik.delvist { background: var(--gold); border-color: var(--gold); }
-    .tl-blokspor .prik.daekket { background: var(--ok); border-color: var(--ok); }
-    .tl-blokspor .prik.aktiv { box-shadow: 0 0 0 3px rgba(107,39,55,.2); border-color: var(--burgundy); }
-    .tl-blokspor .navn { font-size: 13px; font-weight: 600; color: var(--slate); margin-left: 8px; }
+    .tl-emne { font-size: 13px; font-weight: 600; color: var(--slate); }
 
     .tl-samtale { display: flex; flex-direction: column; gap: 16px; min-height: 240px; max-height: 46vh; overflow-y: auto; padding-right: 4px; }
     .tl-tur .hvem { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; font-weight: 700; color: var(--slate); }

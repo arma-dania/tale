@@ -445,39 +445,27 @@ function Eksamen({ tilstand, fileId, stemmeAktiv, stemmeFejlFraStart, faerdig })
 
   return (
     <div className="tl-fade">
+      {/* Ingen fremgangsvisning undervejs: dækningen er eksaminators bogføring,
+          og den ville røbe vurderingen for den studerende midt i prøven. */}
       <div className="tl-status">
         <div className="tl-ur">
           <span className={"tid" + (status.afrunding ? " knap" : "")}>{formatTid(status.tilbage)}</span>
           <span className="cap">tilbage</span>
         </div>
-        <div className="tl-blokspor">
-          {BLOKKE.map((b) => {
-            const d = state.daekning[b.id];
-            const aktiv = b.id === state.blokId;
-            return (
-              <span
-                key={b.id}
-                className={
-                  "prik" +
-                  (aktiv ? " aktiv" : "") +
-                  (d === DAEKNING.DAEKKET ? " daekket" : "") +
-                  (d === DAEKNING.DELVIST ? " delvist" : "")
-                }
-                title={b.navn}
-              />
-            );
-          })}
-          <span className="navn">{blok?.navn}</span>
-        </div>
+        <span className="tl-emne">{blok?.navn}</span>
       </div>
 
       <div className="tl-samtale" ref={bund}>
-        {historik.map((tur, i) => (
-          <div key={i} className={"tl-tur " + tur.rolle}>
-            <span className="hvem">{tur.rolle === "eksaminator" ? "Eksaminator" : "Dig"}</span>
-            <p>{tur.tekst}</p>
-          </div>
-        ))}
+        {/* Taler man, ser man ikke sine egne ord — som ved en rigtig prøve.
+            Skriver man, er teksten derimod selve mediet og bliver stående. */}
+        {historik
+          .filter((tur) => !medStemme || tur.rolle === "eksaminator")
+          .map((tur, i) => (
+            <div key={i} className={"tl-tur " + tur.rolle}>
+              <span className="hvem">{tur.rolle === "eksaminator" ? "Eksaminator" : "Dig"}</span>
+              <p>{tur.tekst}</p>
+            </div>
+          ))}
         {live && (
           <div className="tl-tur eksaminator">
             <span className="hvem">Eksaminator</span>
@@ -493,7 +481,7 @@ function Eksamen({ tilstand, fileId, stemmeAktiv, stemmeFejlFraStart, faerdig })
             </p>
           </div>
         )}
-        {delvis && (
+        {delvis && !medStemme && (
           <div className="tl-tur studerende">
             <span className="hvem">Dig</span>
             <p className="tl-delvis">{delvis}</p>
@@ -507,11 +495,15 @@ function Eksamen({ tilstand, fileId, stemmeAktiv, stemmeFejlFraStart, faerdig })
       {medStemme ? (
         <div className="tl-mikrofon">
           <span className={"tl-lampe" + (lytter ? " lytter" : taleTilstand === "taler" ? " taler" : "")} />
+          {/* Ordene vises ikke, men den studerende skal kunne se, at
+              mikrofonen rent faktisk hører efter. */}
           <span className="tl-tilstand">
             {taleTilstand === "taler"
               ? "Eksaminator taler"
               : lytter
-                ? "Jeg lytter — sig dit svar"
+                ? delvis
+                  ? "Jeg hører dig"
+                  : "Jeg lytter — sig dit svar"
                 : venter
                   ? "Eksaminator tænker"
                   : "Et øjeblik"}

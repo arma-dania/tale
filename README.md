@@ -94,6 +94,18 @@ par hundrede millisekunder i stedet for at vente på hele svaret. Opdelingen lig
 `src/stemme/saetninger.js` og passer på danske forkortelser og tal, så der ikke klippes
 midt i "bl.a." eller "1.500".
 
+## To ting, der bevidst ikke vises
+
+Skærmen viser **ingen fremgang** gennem de syv områder undervejs. Dækningen er
+eksaminators bogføring, og en grøn markering ville røbe vurderingen for den studerende
+midt i prøven — stik imod, at der ikke gives feedback undervejs.
+
+Taler den studerende, vises **ikke** hans eller hendes egne ord. Man ser ikke sine egne
+svar til en mundtlig prøve, og teksten på skærmen ville invitere til at læse op af den i
+stedet for at tale. Mikrofonlampen skifter til "Jeg hører dig", så man stadig kan se, at
+der bliver lyttet. Skrives svarene derimod — når mikrofonen ikke er til rådighed — bliver
+de stående, for dér er teksten selve mediet.
+
 ## Sådan virker tempostyringen
 
 Modellen bestemmer, hvad der spørges om, og om et svar er dækkende. **Koden** bestemmer,
