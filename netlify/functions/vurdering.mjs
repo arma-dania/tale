@@ -79,7 +79,7 @@ Vær ærlig. En vurdering, der er venligere end præstationen, hjælper ingen ti
 SÅDAN SKRIVER DU
 Dansk, du-form, henvendt til den studerende. Hele sætninger i almindelig tekst — ingen punktopstillinger, ingen markdown, ingen overskrifter inde i teksten. Det bliver sat op som et dokument bagefter.
 
-Du svarer udelukkende ved at kalde værktøjet vurder.`;
+Du afleverer vurderingen ved at kalde værktøjet vurder. Skriv ikke andet — hele svaret ligger i værktøjskaldet.`;
 
 const VURDER_VAERKTOEJ = {
   name: "vurder",
@@ -214,15 +214,30 @@ export default async (req) => {
   const stream = new ReadableStream({
     async start(controller) {
       const send = (t, v) => controller.enqueue(koder.encode(JSON.stringify({ t, v }) + "\n"));
+
+      // Voteringen tager tid, og en funktion, der intet sender, bliver lukket
+      // ned undervejs. Et livstegn hvert andet sekund holder forbindelsen åben
+      // og giver klienten noget at vise imens.
+      send("arbejder", 0);
+      const start = Date.now();
+      const puls = setInterval(() => {
+        try {
+          send("arbejder", Math.round((Date.now() - start) / 1000));
+        } catch {
+          clearInterval(puls);
+        }
+      }, 2000);
+
       try {
         const svar = client.messages.stream({
           model: VURDERINGS_MODEL,
-          max_tokens: 4000,
+          max_tokens: 3000,
           thinking: { type: "adaptive" },
-          output_config: { effort: "high" },
+          // Mellem effort frem for høj: vurderingen skal være grundig, men den
+          // skal også nå at blive skrevet inden for funktionens tidsrum.
+          output_config: { effort: "medium" },
           system,
           tools: [VURDER_VAERKTOEJ],
-          tool_choice: { type: "tool", name: VURDER_VAERKTOEJ.name },
           messages: [{ role: "user", content: grundlag(body) }],
         });
 
@@ -233,6 +248,7 @@ export default async (req) => {
       } catch (e) {
         send("fejl", e?.message || String(e));
       } finally {
+        clearInterval(puls);
         controller.close();
       }
     },

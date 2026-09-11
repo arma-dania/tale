@@ -58,12 +58,15 @@ async function streamKald(sti, payload, standardfejl, paaHaendelse) {
   });
 
   if (!res.ok) {
-    let besked = standardfejl;
+    // Serveren svarer med JSON, når den selv opdager fejlen. Er svaret noget
+    // andet — typisk Netlifys egen fejlside, fordi funktionen løb tør for tid
+    // — så sig i det mindste hvilken fejl det var.
+    let besked = `${standardfejl} (serverfejl ${res.status})`;
     try {
       const data = await res.json();
-      besked = [data.error || standardfejl, data.detail].filter(Boolean).join(" ");
+      if (data.error) besked = [data.error, data.detail].filter(Boolean).join(" ");
     } catch {
-      // behold standardbeskeden
+      // behold statuskoden
     }
     throw new Error(besked);
   }
@@ -120,8 +123,12 @@ export async function hentReplik(payload, paaTekst) {
   return { tekst: tekst.trim(), bogfoering };
 }
 
-/** Henter den afsluttende vurdering. Kaldet svarer til voteringen og tager tid. */
-export async function hentVurdering(payload) {
+/**
+ * Henter den afsluttende vurdering. Kaldet svarer til voteringen og tager tid,
+ * så serveren sender livstegn undervejs — `paaSekunder` får dem, så skærmen
+ * kan vise, at der stadig arbejdes.
+ */
+export async function hentVurdering(payload, paaSekunder) {
   let vurdering = null;
 
   await streamKald(
@@ -130,9 +137,12 @@ export async function hentVurdering(payload) {
     "Vurderingen kunne ikke skrives.",
     (h) => {
       if (h.t === "vurdering") vurdering = h.v;
+      else if (h.t === "arbejder") paaSekunder?.(h.v);
     }
   );
 
-  if (!vurdering) throw new Error("Der kom ingen vurdering tilbage. Prøv igen.");
+  if (!vurdering) {
+    throw new Error("Voteringen nåede ikke at blive færdig. Prøv igen — samtalen er her stadig.");
+  }
   return vurdering;
 }

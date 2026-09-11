@@ -566,20 +566,25 @@ function Afslutning({ state, notater, historik, tilstand }) {
   const [vurdering, setVurdering] = useState(null);
   const [fejl, setFejl] = useState("");
   const [henter, setHenter] = useState(false);
+  const [sekunder, setSekunder] = useState(0);
   const [pdfFejl, setPdfFejl] = useState("");
   const bedt = useRef(false);
 
   const voter = useCallback(async () => {
     setHenter(true);
     setFejl("");
+    setSekunder(0);
     try {
       setVurdering(
-        await hentVurdering({
-          tilstand,
-          historik,
-          daekning: state.daekning,
-          notater,
-        })
+        await hentVurdering(
+          {
+            tilstand,
+            historik,
+            daekning: state.daekning,
+            notater,
+          },
+          setSekunder
+        )
       );
     } catch (e) {
       setFejl(e.message);
@@ -612,7 +617,7 @@ function Afslutning({ state, notater, historik, tilstand }) {
             <p className="tl-prompt">Eksaminator voterer</p>
             <p className="tl-sub">
               <span className="tl-spinner dark" />
-              Vurderingen skrives — det tager et øjeblik.
+              Vurderingen skrives{sekunder > 3 ? ` — ${sekunder} sekunder` : " — det tager et øjeblik"}.
             </p>
           </>
         )}
