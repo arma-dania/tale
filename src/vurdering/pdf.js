@@ -195,9 +195,12 @@ export async function byggVurderingsPdf({ vurdering, daekning, tilstand }) {
     doc.text(statusOrd(daekning?.[blok.id]), SIDEBREDDE - MARGEN, s.y, { align: "right" });
     s.y += 5;
 
-    s.broedtekst(linje || "Området blev ikke berørt inden for de femten minutter.", {
-      stoerrelse: 10.5,
-    });
+    // Mangler linjen, siger vi kun noget, hvis området slet ikke blev nået.
+    const reserve =
+      daekning?.[blok.id] === DAEKNING.IKKE
+        ? "Området blev ikke berørt inden for de femten minutter."
+        : null;
+    if (linje || reserve) s.broedtekst(linje || reserve, { stoerrelse: 10.5 });
     s.afstand(3.5);
   }
 

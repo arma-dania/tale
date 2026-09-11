@@ -1,10 +1,14 @@
 /**
  * Voteringen: skriver den afsluttende vurdering af den mundtlige præstation.
  *
- * Kaldet svarer til de fem minutters votering, den rigtige prøve afsætter,
- * og kører derfor på den kraftigste model — her vejer kvaliteten tungere end
- * svartiden. Svaret streames, fordi en streamet Netlify-funktion har tres
- * sekunder mod ti.
+ * Arbejdet er delt i to kald, som klienten sender af sted samtidig, fordi ét
+ * samlet kald ikke nåede at blive færdigt inden for det tidsrum, en funktion
+ * har. Delene er også forskellige af natur:
+ *
+ *   "hoved"    — karakteren, begrundelsen og de gode råd. Det er her, der skal
+ *                dømmes, så den kører på den kraftigste model.
+ *   "omraader" — én linje om hvert af de syv områder. Det er sammenfatning af
+ *                noget, der allerede er bogført, og klares af den hurtige model.
  *
  * Karakteren dækker alene den mundtlige præstation. Studieordningens karakter
  * er en helhedsbedømmelse af projekt og mundtlig prøve under ét, og det kan
@@ -17,7 +21,10 @@ import Anthropic from "@anthropic-ai/sdk";
 
 import { BLOKKE, findBlok } from "../../src/eksamen/blokke.js";
 
-const VURDERINGS_MODEL = "claude-opus-5";
+/** Dømmekraften. Effort holdes lavt, så voteringen når at blive færdig. */
+const HOVED_MODEL = "claude-opus-5";
+/** Sammenfatningen af de syv områder — mekanisk arbejde, hurtig model. */
+const OMRAADE_MODEL = "claude-sonnet-5";
 
 const json = (data, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -81,9 +88,46 @@ Dansk, du-form, henvendt til den studerende. Hele sætninger i almindelig tekst 
 
 Du afleverer vurderingen ved at kalde værktøjet vurder. Skriv ikke andet — hele svaret ligger i værktøjskaldet.`;
 
+const OMRAADE_ROLLE = `Du sammenfatter, hvordan hvert af syv områder blev besvaret ved en mundtlig træningseksamen i Tema 6, Internationalisering, på markedsføringsøkonomuddannelsen ved Erhvervsakademi Dania.
+
+Du får samtalen, eksaminators løbende notater og en oversigt over, hvor langt den studerende nåede. Skriv én til to sætninger om hvert område: hvad den studerende viste, eller hvad der manglede. Nåede området ikke at blive berørt, siger du det kort.
+
+Dansk, du-form, henvendt til den studerende. Almindelige sætninger uden punktopstillinger eller markdown. Du dømmer ikke og giver ingen karakter — det sker et andet sted.
+
+Du afleverer ved at kalde værktøjet omraader. Skriv ikke andet.`;
+
+const OMRAADE_VAERKTOEJ = {
+  name: "omraader",
+  description: "Aflever én linje om hvert af de syv områder.",
+  input_schema: {
+    type: "object",
+    properties: {
+      omraader: {
+        type: "array",
+        description: "Ét punkt per område, i eksaminationens rækkefølge.",
+        items: {
+          type: "object",
+          properties: {
+            blokId: { type: "string", description: "Områdets id." },
+            vurdering: {
+              type: "string",
+              description: "Én til to sætninger om, hvordan området blev besvaret.",
+            },
+          },
+          required: ["blokId", "vurdering"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["omraader"],
+    additionalProperties: false,
+  },
+  strict: true,
+};
+
 const VURDER_VAERKTOEJ = {
   name: "vurder",
-  description: "Aflever den samlede vurdering af den mundtlige præstation.",
+  description: "Aflever karakteren og den samlede vurdering af den mundtlige præstation.",
   input_schema: {
     type: "object",
     properties: {
@@ -113,30 +157,21 @@ const VURDER_VAERKTOEJ = {
         description:
           "To til fire konkrete ting, den studerende bør arbejde med inden eksamen. Hver som én hel sætning, formuleret som noget, man kan gå hjem og gøre.",
       },
-      omraader: {
-        type: "array",
-        description: "Én linje per område, i samme rækkefølge som eksaminationen forløb.",
-        items: {
-          type: "object",
-          properties: {
-            blokId: { type: "string", description: "Områdets id." },
-            vurdering: {
-              type: "string",
-              description: "Én til to sætninger om, hvordan området blev besvaret.",
-            },
-          },
-          required: ["blokId", "vurdering"],
-          additionalProperties: false,
-        },
-      },
     },
-    required: ["karakter", "hovedindtryk", "begrundelse", "styrker", "forbedringer", "omraader"],
+    required: ["karakter", "hovedindtryk", "begrundelse", "styrker", "forbedringer"],
     additionalProperties: false,
   },
   strict: true,
 };
 
-function systemBlokke() {
+/**
+ * Hoveddelen skal dømme og har brug for hele grundlaget. Områdedelen skal bare
+ * sammenfatte, hvad der allerede står i notaterne, og klarer sig uden pensum —
+ * det gør kaldet mærkbart hurtigere.
+ */
+function systemBlokke(del) {
+  if (del === "omraader") return [{ type: "text", text: OMRAADE_ROLLE }];
+
   const p = pensum();
   return [
     { type: "text", text: ROLLE },
@@ -179,9 +214,7 @@ EKSAMINATORS LØBENDE NOTATER
 ${noter}
 
 HELE SAMTALEN
-${samtale}
-
-Skriv nu vurderingen ved at kalde værktøjet vurder.`;
+${samtale}`;
 }
 
 export default async (req) => {
@@ -201,9 +234,31 @@ export default async (req) => {
     return json({ error: "Der er ingen samtale at vurdere." }, 400);
   }
 
+  const del = body.del === "omraader" ? "omraader" : "hoved";
+  const opsaetning =
+    del === "omraader"
+      ? {
+          model: OMRAADE_MODEL,
+          max_tokens: 1500,
+          thinking: { type: "disabled" },
+          output_config: { effort: "low" },
+          vaerktoej: OMRAADE_VAERKTOEJ,
+          opgave: "Skriv nu linjerne ved at kalde værktøjet omraader.",
+        }
+      : {
+          model: HOVED_MODEL,
+          max_tokens: 1500,
+          thinking: { type: "adaptive" },
+          // Lav effort: vurderingen skal nå at blive skrevet færdig, og
+          // grundlaget er allerede skåret til i pensumark og notater.
+          output_config: { effort: "low" },
+          vaerktoej: VURDER_VAERKTOEJ,
+          opgave: "Skriv nu vurderingen ved at kalde værktøjet vurder.",
+        };
+
   let system;
   try {
-    system = systemBlokke();
+    system = systemBlokke(del);
   } catch (e) {
     return json({ error: e.message }, 500);
   }
@@ -230,15 +285,13 @@ export default async (req) => {
 
       try {
         const svar = client.messages.stream({
-          model: VURDERINGS_MODEL,
-          max_tokens: 3000,
-          thinking: { type: "adaptive" },
-          // Mellem effort frem for høj: vurderingen skal være grundig, men den
-          // skal også nå at blive skrevet inden for funktionens tidsrum.
-          output_config: { effort: "medium" },
+          model: opsaetning.model,
+          max_tokens: opsaetning.max_tokens,
+          thinking: opsaetning.thinking,
+          output_config: opsaetning.output_config,
           system,
-          tools: [VURDER_VAERKTOEJ],
-          messages: [{ role: "user", content: grundlag(body) }],
+          tools: [opsaetning.vaerktoej],
+          messages: [{ role: "user", content: `${grundlag(body)}\n\n${opsaetning.opgave}` }],
         });
 
         const endelig = await svar.finalMessage();

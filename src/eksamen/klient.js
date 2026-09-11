@@ -123,26 +123,45 @@ export async function hentReplik(payload, paaTekst) {
   return { tekst: tekst.trim(), bogfoering };
 }
 
-/**
- * Henter den afsluttende vurdering. Kaldet svarer til voteringen og tager tid,
- * så serveren sender livstegn undervejs — `paaSekunder` får dem, så skærmen
- * kan vise, at der stadig arbejdes.
- */
-export async function hentVurdering(payload, paaSekunder) {
-  let vurdering = null;
+async function hentVurderingsdel(payload, del, paaSekunder) {
+  let svar = null;
 
   await streamKald(
     "/.netlify/functions/vurdering",
-    payload,
+    { ...payload, del },
     "Vurderingen kunne ikke skrives.",
     (h) => {
-      if (h.t === "vurdering") vurdering = h.v;
+      if (h.t === "vurdering") svar = h.v;
       else if (h.t === "arbejder") paaSekunder?.(h.v);
     }
   );
 
-  if (!vurdering) {
+  if (!svar) {
     throw new Error("Voteringen nåede ikke at blive færdig. Prøv igen — samtalen er her stadig.");
   }
-  return vurdering;
+  return svar;
+}
+
+/**
+ * Henter den afsluttende vurdering.
+ *
+ * De to dele hentes samtidig, så de hver får deres eget tidsrum hos serveren —
+ * ét samlet kald nåede ikke at blive færdigt. Falder linjerne om de syv
+ * områder fra, står vurderingen og karakteren stadig ved magt; det er dem,
+ * det hele handler om.
+ *
+ * `paaSekunder` får serverens livstegn, så skærmen kan vise, at der arbejdes.
+ */
+export async function hentVurdering(payload, paaSekunder) {
+  const [hoved, omraader] = await Promise.allSettled([
+    hentVurderingsdel(payload, "hoved", paaSekunder),
+    hentVurderingsdel(payload, "omraader"),
+  ]);
+
+  if (hoved.status === "rejected") throw hoved.reason;
+
+  return {
+    ...hoved.value,
+    omraader: omraader.status === "fulfilled" ? omraader.value.omraader || [] : [],
+  };
 }
